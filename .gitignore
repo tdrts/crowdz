@@ -1,0 +1,22 @@
+# root workspace ignores
+/node_modules/
+/package-lock.json
+/pnpm-lock.yaml
+/yarn.lock
+
+# environment files
+.env
+.env.*
+
+# macOS
+.DS_Store
+
+# log files
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# keep crowdz subproject Git ignore behavior
+crowdz/.env
+crowdz/.env.*
+
