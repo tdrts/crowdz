@@ -4,9 +4,17 @@ interface FriendListProps {
   friends: Friend[]
   isLoading?: boolean
   onCallFriend: (friend: Friend) => void
+  disableActions?: boolean
+  isActionLoading?: boolean
 }
 
-export function FriendList({ friends, isLoading, onCallFriend }: FriendListProps) {
+export function FriendList({
+  friends,
+  isLoading,
+  onCallFriend,
+  disableActions = false,
+  isActionLoading = false,
+}: FriendListProps) {
   if (isLoading) {
     return (
       <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
@@ -37,9 +45,10 @@ export function FriendList({ friends, isLoading, onCallFriend }: FriendListProps
           <button
             type="button"
             onClick={() => onCallFriend(friend)}
-            className="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
+            className="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={disableActions || isActionLoading}
           >
-            Start Meet
+            {isActionLoading ? 'Starting…' : 'Start Meet'}
           </button>
         </div>
       ))}

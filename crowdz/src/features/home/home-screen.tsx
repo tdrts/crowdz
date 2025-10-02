@@ -10,6 +10,17 @@ import {
 } from '../friends/hooks'
 import type { Friend } from '../friends/types'
 import { FriendList } from './friend-list'
+import {
+  useActiveMeeting,
+  useCancelMeetingRequestMutation,
+  useEndMeetingMutation,
+  usePendingMeetingRequest,
+  useRespondMeetingRequestMutation,
+  useStartMeetingMutation,
+} from '../meetings/hooks'
+import { WaitingMeetingScreen } from '../meetings/waiting-meeting-screen'
+import { IncomingMeetingModal } from '../meetings/incoming-meeting-modal'
+import { SignalScreen } from '../meetings/signal-screen'
 
 interface HomeScreenProps {
   username: string
@@ -18,8 +29,13 @@ interface HomeScreenProps {
 export function HomeScreen({ username }: HomeScreenProps) {
   const [isAddFriendOpen, setIsAddFriendOpen] = useState(false)
   const [isRequestsOpen, setIsRequestsOpen] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
+  const [cancelError, setCancelError] = useState<string | null>(null)
+  const [respondError, setRespondError] = useState<string | null>(null)
+  const [hadPendingRequest, setHadPendingRequest] = useState(false)
 
   const { session } = useSession()
+  const userId = session?.user.id
   const email = useMemo(() => session?.user.email ?? 'Unknown user', [session?.user.email])
 
   const { data: friends = [], isLoading: isFriendsLoading } = useFriends()
@@ -34,6 +50,22 @@ export function HomeScreen({ username }: HomeScreenProps) {
     refetch: refetchOutgoing,
   } = useOutgoingFriendRequests()
 
+  const {
+    data: pendingMeetingRequest,
+    isLoading: isMeetingRequestLoading,
+    refetch: refetchPendingMeeting,
+  } = usePendingMeetingRequest()
+  const {
+    data: activeMeeting,
+    isLoading: isActiveMeetingLoading,
+    refetch: refetchActiveMeeting,
+  } = useActiveMeeting()
+
+  const startMeetingMutation = useStartMeetingMutation()
+  const cancelMeetingMutation = useCancelMeetingRequestMutation()
+  const respondMeetingMutation = useRespondMeetingRequestMutation()
+  const endMeetingMutation = useEndMeetingMutation()
+
   useEffect(() => {
     if (isRequestsOpen) {
       refetchIncoming()
@@ -41,12 +73,119 @@ export function HomeScreen({ username }: HomeScreenProps) {
     }
   }, [isRequestsOpen, refetchIncoming, refetchOutgoing])
 
+  useEffect(() => {
+    if (!userId) return
+
+    const channel = supabase
+      .channel(`meeting-sync-${userId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'meeting_requests', filter: `from_user=eq.${userId}` },
+        () => {
+          refetchPendingMeeting()
+          refetchActiveMeeting()
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'meeting_requests', filter: `to_user=eq.${userId}` },
+        () => {
+          refetchPendingMeeting()
+          refetchActiveMeeting()
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'meeting_participants', filter: `user_id=eq.${userId}` },
+        () => {
+          refetchActiveMeeting()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [userId, refetchPendingMeeting, refetchActiveMeeting])
+
+  useEffect(() => {
+    if (pendingMeetingRequest && !activeMeeting) {
+      setHadPendingRequest(true)
+      return
+    }
+
+    if (!pendingMeetingRequest && hadPendingRequest) {
+      refetchActiveMeeting()
+      setHadPendingRequest(false)
+    }
+  }, [pendingMeetingRequest, hadPendingRequest, refetchActiveMeeting, activeMeeting])
+
   const pendingRequestsCount = incomingRequests.length
 
-  const handleCallFriend = (friend: Friend) => {
-    // Meeting flow will be wired up later. Placeholder for now.
-    alert(`Meeting flow with ${friend.friendProfile.username} coming soon!`)
+  const handleCallFriend = async (friend: Friend) => {
+    setStartError(null)
+    if (!friend.friendProfile.id) {
+      setStartError('Unable to start a meeting for this friend.')
+      return
+    }
+
+    try {
+      await startMeetingMutation.mutateAsync(friend.friendProfile.id)
+    } catch (error) {
+      const message = (error as { message?: string }).message ?? 'Failed to start meeting.'
+      setStartError(message)
+    }
   }
+
+  const handleCancelMeetingRequest = async () => {
+    if (!pendingMeetingRequest) return
+    setCancelError(null)
+    try {
+      await cancelMeetingMutation.mutateAsync(pendingMeetingRequest.id)
+    } catch (error) {
+      const message = (error as { message?: string }).message ?? 'Failed to cancel request.'
+      setCancelError(message)
+    }
+  }
+
+  const handleRespondMeetingRequest = async (action: 'accept' | 'decline') => {
+    if (!pendingMeetingRequest) return
+    setRespondError(null)
+    try {
+      await respondMeetingMutation.mutateAsync({
+        meetingRequestId: pendingMeetingRequest.id,
+        action,
+      })
+    } catch (error) {
+      const message = (error as { message?: string }).message ?? 'Something went wrong. Try again.'
+      setRespondError(message)
+    }
+  }
+
+  const handleEndMeeting = async () => {
+    if (!activeMeeting) return
+    try {
+      await endMeetingMutation.mutateAsync(activeMeeting.id)
+    } catch (error) {
+      const message = (error as { message?: string }).message ?? 'Failed to end meeting.'
+      // Surface end error inside SignalScreen via throw
+      throw new Error(message)
+    }
+  }
+
+  const isCaller = pendingMeetingRequest?.fromUserId === userId
+  const isRecipient = pendingMeetingRequest?.toUserId === userId
+  const pendingFriendName = isCaller
+    ? pendingMeetingRequest?.toUser.username
+    : pendingMeetingRequest?.fromUser.username
+
+  const actionsDisabled =
+    !!pendingMeetingRequest ||
+    startMeetingMutation.isPending ||
+    isMeetingRequestLoading ||
+    respondMeetingMutation.isPending ||
+    !!activeMeeting ||
+    isActiveMeetingLoading
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -86,7 +225,14 @@ export function HomeScreen({ username }: HomeScreenProps) {
           </div>
         </div>
 
-        <FriendList friends={friends} isLoading={isFriendsLoading} onCallFriend={handleCallFriend} />
+        <FriendList
+          friends={friends}
+          isLoading={isFriendsLoading}
+          onCallFriend={handleCallFriend}
+          disableActions={actionsDisabled}
+          isActionLoading={startMeetingMutation.isPending}
+        />
+        {startError ? <p className="text-sm text-destructive">{startError}</p> : null}
       </section>
 
       <button
@@ -105,6 +251,31 @@ export function HomeScreen({ username }: HomeScreenProps) {
         outgoingRequests={outgoingRequests}
         isLoading={isIncomingLoading || isOutgoingLoading}
       />
+
+      <WaitingMeetingScreen
+        open={Boolean(pendingMeetingRequest && isCaller && !activeMeeting)}
+        friendName={pendingFriendName}
+        onCancel={handleCancelMeetingRequest}
+        isCancelling={cancelMeetingMutation.isPending}
+        error={cancelError}
+      />
+      <IncomingMeetingModal
+        open={Boolean(pendingMeetingRequest && isRecipient && !activeMeeting)}
+        friendName={pendingFriendName}
+        onAccept={() => handleRespondMeetingRequest('accept')}
+        onDecline={() => handleRespondMeetingRequest('decline')}
+        isResponding={respondMeetingMutation.isPending}
+        error={respondError}
+      />
+      {activeMeeting && userId ? (
+        <SignalScreen
+          open
+          meeting={activeMeeting}
+          currentUserId={userId}
+          onEndMeeting={handleEndMeeting}
+          isEnding={endMeetingMutation.isPending}
+        />
+      ) : null}
     </div>
   )
 }

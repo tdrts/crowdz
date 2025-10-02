@@ -47,3 +47,39 @@ begin
   end if;
 end;
 $$;
+
+create or replace function public.end_meeting(meeting_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  requester uuid := auth.uid();
+  target_meeting_id alias for meeting_id;
+begin
+  if requester is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  update meetings
+     set active = false,
+         ended_at = now()
+   where id = target_meeting_id
+     and active = true
+     and exists (
+       select 1
+       from meeting_participants mp
+       where mp.meeting_id = target_meeting_id
+         and mp.user_id = requester
+     );
+
+  if not found then
+    raise exception 'Not authorized or meeting already closed';
+  end if;
+
+  update meeting_participants
+     set left_at = coalesce(left_at, now())
+   where meeting_id = target_meeting_id;
+end;
+$$;
