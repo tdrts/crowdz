@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSession } from '../../providers/app-providers'
 import {
   cancelMeetingRequest,
+  confirmMeeting,
   endMeeting,
   fetchActiveMeeting,
   fetchPendingMeetingRequest,
@@ -83,6 +84,23 @@ export function useRespondMeetingRequestMutation() {
       if (data.meeting) {
         queryClient.setQueryData(['meeting', 'active', userId], data.meeting as Meeting)
       }
+    },
+  })
+}
+
+export function useConfirmMeetingMutation() {
+  const queryClient = useQueryClient()
+  const { session } = useSession()
+  const userId = session?.user.id
+
+  return useMutation({
+    mutationFn: (meetingId: string) => confirmMeeting(meetingId),
+    onSuccess: () => {
+      if (!userId) return
+      queryClient.setQueryData(['meeting', 'active', userId], null)
+      queryClient.invalidateQueries({ queryKey: ['meeting', 'active', userId] })
+      queryClient.invalidateQueries({ queryKey: ['meeting-request', userId] })
+      queryClient.invalidateQueries({ queryKey: ['friends', userId] })
     },
   })
 }

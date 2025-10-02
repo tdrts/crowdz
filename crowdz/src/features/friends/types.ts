@@ -7,6 +7,8 @@ export interface Friend {
   id: string
   accepted: boolean
   friendProfile: FriendProfile
+  dailyMeets: number
+  totalMeets: number
 }
 
 export interface FriendRequest {

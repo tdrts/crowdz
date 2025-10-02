@@ -13,6 +13,7 @@ import { FriendList } from './friend-list'
 import {
   useActiveMeeting,
   useCancelMeetingRequestMutation,
+  useConfirmMeetingMutation,
   useEndMeetingMutation,
   usePendingMeetingRequest,
   useRespondMeetingRequestMutation,
@@ -33,12 +34,17 @@ export function HomeScreen({ username }: HomeScreenProps) {
   const [cancelError, setCancelError] = useState<string | null>(null)
   const [respondError, setRespondError] = useState<string | null>(null)
   const [hadPendingRequest, setHadPendingRequest] = useState(false)
+  const [hadActiveMeeting, setHadActiveMeeting] = useState(false)
 
   const { session } = useSession()
   const userId = session?.user.id
   const email = useMemo(() => session?.user.email ?? 'Unknown user', [session?.user.email])
 
-  const { data: friends = [], isLoading: isFriendsLoading } = useFriends()
+  const {
+    data: friends = [],
+    isLoading: isFriendsLoading,
+    refetch: refetchFriends,
+  } = useFriends()
   const {
     data: incomingRequests = [],
     isLoading: isIncomingLoading,
@@ -64,6 +70,7 @@ export function HomeScreen({ username }: HomeScreenProps) {
   const startMeetingMutation = useStartMeetingMutation()
   const cancelMeetingMutation = useCancelMeetingRequestMutation()
   const respondMeetingMutation = useRespondMeetingRequestMutation()
+  const confirmMeetingMutation = useConfirmMeetingMutation()
   const endMeetingMutation = useEndMeetingMutation()
 
   useEffect(() => {
@@ -120,6 +127,19 @@ export function HomeScreen({ username }: HomeScreenProps) {
     }
   }, [pendingMeetingRequest, hadPendingRequest, refetchActiveMeeting, activeMeeting])
 
+  useEffect(() => {
+    if (activeMeeting) {
+      setHadActiveMeeting(true)
+      return
+    }
+
+    if (!activeMeeting && hadActiveMeeting) {
+      refetchFriends()
+      refetchPendingMeeting()
+      setHadActiveMeeting(false)
+    }
+  }, [activeMeeting, hadActiveMeeting, refetchFriends, refetchPendingMeeting])
+
   const pendingRequestsCount = incomingRequests.length
 
   const handleCallFriend = async (friend: Friend) => {
@@ -173,6 +193,16 @@ export function HomeScreen({ username }: HomeScreenProps) {
     }
   }
 
+  const handleConfirmMeeting = async () => {
+    if (!activeMeeting) return
+    try {
+      await confirmMeetingMutation.mutateAsync(activeMeeting.id)
+    } catch (error) {
+      const message = (error as { message?: string }).message ?? 'Failed to confirm meeting.'
+      throw new Error(message)
+    }
+  }
+
   const isCaller = pendingMeetingRequest?.fromUserId === userId
   const isRecipient = pendingMeetingRequest?.toUserId === userId
   const pendingFriendName = isCaller
@@ -184,6 +214,7 @@ export function HomeScreen({ username }: HomeScreenProps) {
     startMeetingMutation.isPending ||
     isMeetingRequestLoading ||
     respondMeetingMutation.isPending ||
+    confirmMeetingMutation.isPending ||
     !!activeMeeting ||
     isActiveMeetingLoading
 
@@ -272,6 +303,8 @@ export function HomeScreen({ username }: HomeScreenProps) {
           open
           meeting={activeMeeting}
           currentUserId={userId}
+          onConfirmMeeting={handleConfirmMeeting}
+          isConfirming={confirmMeetingMutation.isPending}
           onEndMeeting={handleEndMeeting}
           isEnding={endMeetingMutation.isPending}
         />

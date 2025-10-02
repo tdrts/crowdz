@@ -20,13 +20,15 @@ function mapFriend(row: any): Friend {
       id: friendProfile.id,
       username: friendProfile.username ?? 'Friend',
     },
+    dailyMeets: row.daily_meets ?? 0,
+    totalMeets: row.total_meets ?? 0,
   }
 }
 
 export async function fetchFriends(userId: string): Promise<Friend[]> {
   const { data, error } = await supabase
     .from('friends')
-    .select(`id, user_id, friend_id, accepted, friend_profile:friend_id(id, username)`)
+    .select(`id, user_id, friend_id, accepted, daily_meets, total_meets, friend_profile:friend_id(id, username)`)
     .eq('user_id', userId)
     .eq('accepted', true)
     .order('created_at', { ascending: true })

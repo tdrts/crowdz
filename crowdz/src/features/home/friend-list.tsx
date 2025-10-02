@@ -40,7 +40,18 @@ export function FriendList({
         >
           <div>
             <p className="text-base font-medium text-foreground">{friend.friendProfile.username}</p>
-            <p className="text-xs text-muted-foreground">Ready to meet up</p>
+            <p className="text-xs text-muted-foreground flex items-center gap-3">
+              <span role="img" aria-label="today-streak">
+                🔥
+              </span>
+              <span className="font-semibold text-foreground">{friend.dailyMeets}</span>
+              <span className="text-muted-foreground">today</span>
+              <span role="img" aria-label="total-streak">
+                🌟
+              </span>
+              <span className="font-semibold text-foreground">{friend.totalMeets}</span>
+              <span className="text-muted-foreground">all time</span>
+            </p>
           </div>
           <button
             type="button"

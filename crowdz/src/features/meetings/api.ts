@@ -180,6 +180,14 @@ export async function respondToMeetingRequest({
   return { meeting }
 }
 
+export async function confirmMeeting(meetingId: string) {
+  const { error } = await supabase.rpc('confirm_meeting', {
+    p_meeting_id: meetingId,
+  })
+
+  if (error) throw error
+}
+
 export async function endMeeting(meetingId: string) {
   const { error } = await supabase.rpc('end_meeting', {
     p_meeting_id: meetingId,
